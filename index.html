@@ -62,7 +62,7 @@ body {
   touch-action: manipulation;
   min-height: 100dvh;
 }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 .num { font-variant-numeric: tabular-nums; }
 
@@ -138,6 +138,8 @@ section[hidden] { display: none; }
 .sess { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-top: 1px solid var(--border); width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; }
 .sess .o { font-weight: 600; overflow-wrap: anywhere; }
 .sess .s { font-size: 14px; color: var(--muted); }
+.sess .note { font-size: 14px; margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+textarea { min-height: 96px; resize: vertical; line-height: 1.4; }
 .sess .h { margin-left: auto; font-weight: 700; white-space: nowrap; }
 .sess .chev { color: var(--muted); }
 
@@ -147,7 +149,7 @@ section[hidden] { display: none; }
 /* forms */
 .field { display: grid; gap: 6px; margin-bottom: 12px; }
 .field > span { font-size: 14px; color: var(--muted); font-weight: 600; }
-input[type=text], input[type=date], input[type=time], input[type=number], select {
+input[type=text], input[type=date], input[type=time], input[type=number], select, textarea {
   width: 100%; min-height: 46px; padding: 10px 12px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--surface); font-size: 16px;
 }
@@ -223,12 +225,27 @@ dialog h2 { margin: 0 0 14px; font-size: 19px; }
       <label class="field"><span>Lõpp</span><input type="time" name="end" required></label>
     </div>
     <label class="field"><span>Pausid kokku (minutit)</span><input type="number" name="pause" min="0" step="1" inputmode="numeric" value="0"></label>
+    <label class="field"><span>Tehtud tööd (valikuline)</span><textarea name="note" rows="3" maxlength="1000" placeholder="nt plaatimine, vuukimine"></textarea></label>
     <p class="muted" id="dlg-session-hint" style="margin:0 0 12px;font-size:14px"></p>
     <div class="dlgactions">
       <button type="button" class="btn danger" id="dlg-session-delete">Kustuta</button>
       <span class="spacer"></span>
       <button type="button" class="btn" id="dlg-session-cancel">Tühista</button>
       <button type="submit" class="btn primary">Salvesta</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-stop">
+  <form method="dialog" id="form-stop">
+    <h2>Lõpeta töö</h2>
+    <p id="dlg-stop-summary" class="num" style="margin:-6px 0 14px"></p>
+    <label class="field"><span>Mida täna tegid? (valikuline)</span>
+      <textarea name="note" rows="4" maxlength="1000" placeholder="nt plaatimine, vuukimine, materjali toomine"></textarea></label>
+    <div class="dlgactions">
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="dlg-stop-cancel">Tühista</button>
+      <button type="submit" class="btn danger">Lõpeta</button>
     </div>
   </form>
 </dialog>
@@ -304,7 +321,15 @@ function togglePause() {
 }
 function stopWork() {
   const s = activeSession(); if (!s) return;
-  if (!confirm('Lõpetad töö objektil "' + objName(s.objectId) + '"?')) return;
+  const f = document.getElementById('form-stop');
+  f.elements.note.value = s.note || '';
+  document.getElementById('dlg-stop-summary').textContent =
+    objName(s.objectId) + ' · ' + clockTime(s.start) + '–' + clockTime(Date.now()) + ' · ' + hm(netMs(s)) + ' h tööd';
+  document.getElementById('dlg-stop').showModal();
+}
+function finishWork(note) {
+  const s = activeSession(); if (!s) return;
+  if (note) s.note = note; else delete s.note;
   const now = Date.now();
   s.pauses.forEach(p => { if (!p.end) p.end = now; });
   s.end = now;
@@ -322,7 +347,7 @@ function sessionRow(s) {
   const p = pauseMs(s);
   return `<button class="sess" data-edit="${s.id}">
     <div><div class="o">${esc(objName(s.objectId))}</div>
-    <div class="s num">${clockTime(s.start)}–${s.end ? clockTime(s.end) : '…'}${p >= 60000 ? ' · paus ' + hm(p) : ''}</div></div>
+    <div class="s num">${clockTime(s.start)}–${s.end ? clockTime(s.end) : '…'}${p >= 60000 ? ' · paus ' + hm(p) : ''}</div>${s.note ? `<div class="note">${esc(s.note)}</div>` : ''}</div>
     <span class="h num">${hm(netMs(s))} h</span><span class="chev">›</span></button>`;
 }
 
@@ -480,11 +505,13 @@ function openSessionDialog(id) {
     form.start.value = clockTime(s.start);
     form.end.value = clockTime(s.end);
     form.pause.value = Math.round(pauseMs(s) / 60000);
+    form.note.value = s.note || '';
   } else {
     const today = dayKey(Date.now());
     form.objectId.value = state.selectedObjectId && ids.includes(state.selectedObjectId) ? state.selectedObjectId : ids[0];
     form.date.value = monthKey(Date.now()) === viewMonth ? today : viewMonth + '-01';
     form.start.value = '08:00'; form.end.value = '16:30'; form.pause.value = 30;
+    form.note.value = '';
   }
   updateHint();
   dlg.showModal();
@@ -511,6 +538,8 @@ form.addEventListener('submit', e => {
   if (!s) { s = { id: uid(), pauses: [] }; state.sessions.push(s); }
   const keepPauses = s.start === start && Math.round(pauseMs(s) / 60000) * 60000 === pause;
   s.objectId = form.objectId.value; s.start = start; s.end = end;
+  const note = form.note.value.trim();
+  if (note) s.note = note; else delete s.note;
   // Only the pause total matters for the numbers; if it was edited, store it as one block.
   if (!keepPauses) s.pauses = pause ? [{ start, end: start + pause }] : [];
   save(); dlg.close(); toast('Salvestatud'); render();
@@ -521,6 +550,14 @@ document.getElementById('dlg-session-delete').onclick = () => {
   state.sessions = state.sessions.filter(x => x.id !== editingId);
   save(); dlg.close(); toast('Kustutatud'); render();
 };
+
+document.getElementById('form-stop').addEventListener('submit', e => {
+  e.preventDefault();
+  const note = e.target.elements.note.value.trim();
+  document.getElementById('dlg-stop').close();
+  finishWork(note);
+});
+document.getElementById('dlg-stop-cancel').onclick = () => document.getElementById('dlg-stop').close();
 
 /* ---------- export / backup ---------- */
 function download(name, text, type) {
@@ -537,10 +574,10 @@ function download(name, text, type) {
 }
 function csv(sessions, name) {
   const q = v => '"' + String(v).replace(/"/g, '""') + '"';
-  const rows = [['Kuupäev', 'Objekt', 'Algus', 'Lõpp', 'Pausid (h:mm)', 'Töötunnid (h:mm)', 'Pausid (h)', 'Töötunnid (h)']];
+  const rows = [['Kuupäev', 'Objekt', 'Algus', 'Lõpp', 'Pausid (h:mm)', 'Töötunnid (h:mm)', 'Pausid (h)', 'Töötunnid (h)', 'Tehtud tööd']];
   sessions.filter(s => s.end).sort((a, b) => a.start - b.start).forEach(s => rows.push([
     dayKey(s.start), objName(s.objectId), clockTime(s.start), clockTime(s.end),
-    hm(pauseMs(s)), hm(netMs(s)), decH(pauseMs(s)), decH(netMs(s)),
+    hm(pauseMs(s)), hm(netMs(s)), decH(pauseMs(s)), decH(netMs(s)), s.note || '',
   ]));
   // BOM + semicolons so Estonian-locale Excel opens it with correct columns and letters.
   download(name, '﻿' + rows.map(r => r.map(q).join(';')).join('\r\n'), 'text/csv;charset=utf-8');
