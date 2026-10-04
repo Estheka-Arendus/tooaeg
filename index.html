@@ -113,7 +113,10 @@ section[hidden] { display: none; }
 .pill.work { background: var(--ok-bg); color: var(--accent); }
 .pill.paused { background: var(--pause-bg); color: var(--pause); }
 .clock { font-size: 56px; font-weight: 700; letter-spacing: -.02em; margin: 10px 0 4px; line-height: 1.1; }
-.clock.paused { color: var(--muted); }
+.clock.paused { color: var(--muted); font-size: 40px; }
+.pauseclock { margin: 6px auto 10px; padding: 10px 16px; border-radius: 14px; background: var(--pause-bg); color: var(--pause); display: inline-block; }
+.pauseclock .k { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.pauseclock .v { font-size: 40px; font-weight: 700; line-height: 1.1; }
 .timer .meta { color: var(--muted); font-size: 15px; }
 .timer .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
 
@@ -364,6 +367,7 @@ function renderTimer() {
       <span class="pill ${paused ? 'paused' : 'work'}">${paused ? 'Pausil' : 'Töötan'}</span>
       <div class="objname">${esc(objName(s.objectId))}</div>
       <div class="clock num ${paused ? 'paused' : ''}" id="clock">${hms(netMs(s))}</div>
+      ${paused ? '<div class="pauseclock"><div class="k">Paus kestnud</div><div class="v num" id="pauseclock"></div></div>' : ''}
       <div class="meta num" id="clockmeta"></div>
       <div class="actions">
         <button class="btn big ${paused ? 'primary' : 'pause'}" data-act="pause">${paused ? 'Jätka' : 'Paus'}</button>
@@ -397,8 +401,9 @@ function tick() {
   const c = document.getElementById('clock'), m = document.getElementById('clockmeta');
   if (!c) return;
   c.textContent = hms(netMs(s));
-  const p = pauseMs(s);
-  m.textContent = 'Alustasid ' + clockTime(s.start) + ' · pausid ' + hm(p);
+  const now = Date.now(), open = s.pauses.find(p => !p.end), pc = document.getElementById('pauseclock');
+  if (open && pc) pc.textContent = hms(now - open.start);
+  m.textContent = 'Alustasid ' + clockTime(s.start) + ' · pausid kokku ' + hm(pauseMs(s, now));
 }
 
 function renderSummary() {
