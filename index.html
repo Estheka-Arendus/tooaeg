@@ -260,6 +260,7 @@ dialog h2 { margin: 0 0 14px; font-size: 19px; }
 'use strict';
 
 /* ---------- storage ---------- */
+const APP_VERSION = 5; // bump together with CACHE in sw.js
 const KEY = 'tooaeg.v1';
 let state = load();
 
@@ -475,7 +476,8 @@ function renderObjects() {
         <button class="btn" data-act="backup">Salvesta varukoopia</button>
         <button class="btn" data-act="restore">Taasta varukoopiast</button>
       </div>
-    </div>`;
+    </div>
+    <p class="muted num" style="font-size:13px;text-align:center">Versioon ${APP_VERSION}</p>`;
 }
 
 function render() {
@@ -670,7 +672,21 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rend
 setInterval(tick, 1000);
 
 render();
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // When a new version's service worker takes over, reload once so it is used right away
+  // (skipped on the very first install, and postponed while a dialog is open).
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  const reloadWhenIdle = () => {
+    if (reloading) return;
+    if (document.querySelector('dialog[open]')) { setTimeout(reloadWhenIdle, 2000); return; }
+    reloading = true; location.reload();
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) reloadWhenIdle(); });
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
 </script>
 </body>
 </html>
