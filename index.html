@@ -494,11 +494,13 @@ function render() {
 const dlg = document.getElementById('dlg-session');
 const form = document.getElementById('form-session');
 let editingId = null;
+let orig = null; // the edited entry's exact times, kept unless the user changes those fields
 
 function openSessionDialog(id) {
   const s = id ? state.sessions.find(x => x.id === id) : null;
   if (s && !s.end) { toast('Käimasolevat tööd saab muuta pärast lõpetamist'); return; }
   editingId = id;
+  orig = s ? { date: dayKey(s.start), startHm: clockTime(s.start), endHm: clockTime(s.end), start: s.start, end: s.end } : null;
   const ids = [...new Set([...liveObjects().map(o => o.id), ...(s ? [s.objectId] : [])])];
   if (!ids.length) { toast('Lisa enne objekt'); return; }
   form.objectId.innerHTML = ids.map(i => `<option value="${i}">${esc(objName(i))}</option>`).join('');
@@ -522,23 +524,35 @@ function openSessionDialog(id) {
   dlg.showModal();
 }
 function formRange() {
-  const start = new Date(form.date.value + 'T' + form.start.value).getTime();
-  let end = new Date(form.date.value + 'T' + form.end.value).getTime();
-  if (end <= start) end += 86400000; // ended after midnight
+  const sameDay = orig && form.date.value === orig.date;
+  const start = sameDay && form.start.value === orig.startHm ? orig.start : new Date(form.date.value + 'T' + form.start.value).getTime();
+  let end;
+  if (sameDay && form.end.value === orig.endHm) end = orig.end;
+  else {
+    end = new Date(form.date.value + 'T' + form.end.value).getTime();
+    if (end < start) end += 86400000; // ended after midnight
+  }
   return { start, end, pause: Math.max(0, Math.round(+form.pause.value || 0)) * 60000 };
 }
 function updateHint() {
   const { start, end, pause } = formRange();
   const hint = document.getElementById('dlg-session-hint');
   if (isNaN(start) || isNaN(end)) { hint.textContent = ''; return; }
-  hint.textContent = pause >= end - start ? 'Paus ei saa olla pikem kui tööaeg.' : 'Töötunde: ' + hm(end - start - pause) + ' h';
+  const err = rangeError(start, end, pause);
+  hint.textContent = err || 'Töötunde: ' + hm(end - start - pause) + ' h' + (dayKey(end) !== dayKey(start) ? ' (lõpp järgmisel päeval)' : '');
+}
+function rangeError(start, end, pause) {
+  if (end < start) return 'Lõpp ei saa olla enne algust.';
+  if (pause > 0 && pause >= end - start) return 'Paus ei saa olla pikem kui tööaeg.';
+  return '';
 }
 form.addEventListener('input', updateHint);
 form.addEventListener('submit', e => {
   e.preventDefault();
   const { start, end, pause } = formRange();
   if (isNaN(start) || isNaN(end)) return;
-  if (pause >= end - start) { toast('Paus ei saa olla pikem kui tööaeg'); return; }
+  const err = rangeError(start, end, pause);
+  if (err) { toast(err); return; }
   let s = editingId && state.sessions.find(x => x.id === editingId);
   if (!s) { s = { id: uid(), pauses: [] }; state.sessions.push(s); }
   const keepPauses = s.start === start && Math.round(pauseMs(s) / 60000) * 60000 === pause;

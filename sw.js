@@ -1,5 +1,5 @@
 // Offline support: page is network-first, other files cache-first with background refresh.
-const CACHE = 'tooaeg-v3';
+const CACHE = 'tooaeg-v4';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
